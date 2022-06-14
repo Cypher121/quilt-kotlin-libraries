@@ -18,3 +18,13 @@ include(":core")
 include(":wrapper:minecraft")
 include(":wrapper:qsl")
 include(":fatjar")
+
+enableFeaturePreview("VERSION_CATALOGS")
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("libs.versions.toml"))
+        }
+    }
+}

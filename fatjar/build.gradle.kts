@@ -1,5 +1,5 @@
 plugins {
-    id("org.quiltmc.loom")
+    id("qkl.module")
 }
 
 fun DependencyHandlerScope.includeApi(dependency: Any) {

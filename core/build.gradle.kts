@@ -1,3 +1,7 @@
+plugins {
+    id("qkl.module")
+}
+
 fun DependencyHandlerScope.includeApi(dependency: Any) {
     include(dependency)?.let { modApi(it) }
 }

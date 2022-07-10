@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:OptIn(BrigadierContext::class)
+
 package org.quiltmc.qkl.wrapper.minecraft.brigadier
 
 import com.mojang.brigadier.arguments.ArgumentType
@@ -44,8 +46,8 @@ public class ArgumentConstructor<S, B : ArgumentBuilder<S, *>, D : ArgumentDescr
      *
      * @author Cypher121
      */
-    public fun required(): CommandArgument.Required<S, B, D> {
-        return CommandArgument.Required(builder, name, descriptor)
+    public fun required(parentBuilder: ArgumentBuilder<S, *>): CommandArgument.Required<S, B, D> {
+        return CommandArgument.Required(parentBuilder, builder, name, descriptor)
     }
 
     /**
@@ -56,8 +58,8 @@ public class ArgumentConstructor<S, B : ArgumentBuilder<S, *>, D : ArgumentDescr
      *
      * @author Cypher121
      */
-    public fun optional(): CommandArgument.Optional<S, D> {
-        return CommandArgument.Optional(builder, name, descriptor)
+    public fun <P : ArgumentBuilder<S, *>> optional(parentBuilder: P): CommandArgument.Optional<S, P, B, D> {
+        return CommandArgument.Optional(parentBuilder, builder, name, descriptor)
     }
 }
 
@@ -67,13 +69,18 @@ public class ArgumentConstructor<S, B : ArgumentBuilder<S, *>, D : ArgumentDescr
  *
  * @author Cypher121
  */
-public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : ArgumentDescriptor<*>, out A>(
-    public val builder: B,
+public sealed class CommandArgument<S,
+        C : ArgumentBuilder<S, *>,
+        B : ArgumentBuilder<S, *>,
+        D : ArgumentDescriptor<*>,
+        T, A
+        >(
+    public val childBuilder: C,
     public val name: String,
     public val descriptor: D
 ) {
     /**
-     * Registers the argument on the [parentBuilder].
+     * Registers the argument.
      *
      * Exact behavior differs between [Required]
      * and [Optional] arguments.
@@ -83,7 +90,7 @@ public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : Ar
      *
      * @author Cypher121
      */
-    public abstract fun register(parentBuilder: ArgumentBuilder<S, *>, action: B.(A) -> Unit)
+    public abstract fun register(action: /* context(T) */ B.(A) -> Unit)
 
     /**
      * [CommandArgument] that must be present in the command.
@@ -92,11 +99,16 @@ public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : Ar
      *
      * @author Cypher121
      */
-    public class Required<S, B : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>>(
-        builder: B,
+    public class Required<S, C : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>>(
+        public val parentBuilder: ArgumentBuilder<S, *>,
+        childBuilder: C,
         name: String,
         descriptor: D
-    ) : CommandArgument<S, B, D, ArgumentAccessor<S, D>>(builder, name, descriptor) {
+    ) : CommandArgument<
+            S, C, C, D,
+            RequiredArgumentContext<S, C>,
+            ArgumentAccessor<S, D>
+            >(childBuilder, name, descriptor) {
         /**
          * Registers the argument on the [parentBuilder]
          * as a required argument and further configures the
@@ -111,14 +123,17 @@ public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : Ar
         // calls normally otherwise
         @Suppress("OVERRIDE_BY_INLINE")
         override inline fun register(
-            parentBuilder: ArgumentBuilder<S, *>,
-            action: B.(ArgumentAccessor<S, D>) -> Unit
+            action:
+            /* context(RequiredArgumentContext<S, C>) */
+            C.(ArgumentAccessor<S, D>) -> Unit
         ) {
-            builder.action {
-                ArgumentReader(this, name, descriptor)
+            with(RequiredArgumentContext<S, C>()) {
+                childBuilder.action {
+                    ArgumentReader(this, name, descriptor)
+                }
             }
 
-            parentBuilder.then(builder)
+            parentBuilder.then(childBuilder)
         }
     }
 
@@ -129,13 +144,18 @@ public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : Ar
      *
      * @author Cypher121
      */
-    public class Optional<S, D : ArgumentDescriptor<*>>(
-        builder: ArgumentBuilder<S, *>,
+    public class Optional<S, P : ArgumentBuilder<S, *>, C : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>>(
+        public val parent: P,
+        childBuilder: C,
         name: String,
         descriptor: D
-    ) : CommandArgument<S, ArgumentBuilder<S, *>, D, ArgumentAccessor<S, D>?>(builder, name, descriptor) {
+    ) : CommandArgument<S, C, ArgumentBuilder<S, *>, D, OptionalArgumentContext<S, P, C>, ArgumentAccessor<S, D>?>(
+        childBuilder,
+        name,
+        descriptor
+    ) {
         /**
-         * Registers the argument on the [parentBuilder]
+         * Registers the argument on the [parent] builder
          * as an optional argument and further configures the
          * resulting subcommands with the given [action].
          *
@@ -155,16 +175,21 @@ public sealed class CommandArgument<S, out B : ArgumentBuilder<S, *>, out D : Ar
         // calls normally otherwise
         @Suppress("OVERRIDE_BY_INLINE")
         override inline fun register(
-            parentBuilder: ArgumentBuilder<S, *>,
-            action: (ArgumentBuilder<S, *>.(ArgumentAccessor<S, D>?) -> Unit)
+            action:
+            /* context(OptionalArgumentContext<S, P, C>) */
+            ArgumentBuilder<S, *>.(ArgumentAccessor<S, D>?) -> Unit
         ) {
-            builder.action {
-                ArgumentReader(this, name, descriptor)
+            with(OptionalArgumentContext.Present<S, P, C>(childBuilder)) {
+                childBuilder.action {
+                    ArgumentReader(this, name, descriptor)
+                }
             }
 
-            parentBuilder.then(builder)
+            parent.then(childBuilder)
 
-            parentBuilder.action(null)
+            with(OptionalArgumentContext.Absent<S, P, C>()) {
+                parent.action(null)
+            }
         }
     }
 }
@@ -219,9 +244,11 @@ public fun <S, AT, A : ArgumentType<AT>> argument(
 @BrigadierDsl
 public inline fun <S, B : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>> ArgumentBuilder<S, *>.required(
     constructor: ArgumentConstructor<S, B, D>,
-    action: B.(ArgumentAccessor<S, D>) -> Unit
+    action:
+    /* context(RequiredArgumentContext<S, B>) */
+    B.(ArgumentAccessor<S, D>) -> Unit
 ) {
-    constructor.required().register(this, action)
+    constructor.required(this).register(action)
 }
 
 /**
@@ -246,9 +273,11 @@ public inline fun <S, B : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>> Argu
  * @author Cypher121
  */
 @BrigadierDsl
-public inline fun <S, D : ArgumentDescriptor<*>> ArgumentBuilder<S, *>.optional(
-    constructor: ArgumentConstructor<S, *, D>,
-    action: ArgumentBuilder<S, *>.(ArgumentAccessor<S, D>?) -> Unit
+public inline fun <S, P: ArgumentBuilder<S, *>, C : ArgumentBuilder<S, *>, D : ArgumentDescriptor<*>> P.optional(
+    constructor: ArgumentConstructor<S, C, D>,
+    action:
+    /* context(OptionalArgumentContext<S, P, C>) */
+    ArgumentBuilder<S, *>.(ArgumentAccessor<S, D>?) -> Unit
 ) {
-    constructor.optional().register(this, action)
+    constructor.optional(this).register(action)
 }

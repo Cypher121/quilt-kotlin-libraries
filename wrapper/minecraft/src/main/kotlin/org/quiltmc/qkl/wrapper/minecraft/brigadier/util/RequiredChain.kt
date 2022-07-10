@@ -43,8 +43,8 @@ public inline fun <
         ArgumentAccessor<S, D2>
     ) -> Unit
 ) {
-    first.required().register(this) { firstAccessor ->
-        second.required().register(this) { secondAccessor ->
+    first.required(this).register { firstAccessor ->
+        second.required(this).register { secondAccessor ->
             action(firstAccessor, secondAccessor)
         }
     }
@@ -73,9 +73,9 @@ public inline fun <
         ArgumentAccessor<S, D3>
     ) -> Unit
 ) {
-    first.required().register(this) { firstAccessor ->
-        second.required().register(this) { secondAccessor ->
-            third.required().register(this) { thirdAccessor ->
+    first.required(this).register { firstAccessor ->
+        second.required(this).register { secondAccessor ->
+            third.required(this).register { thirdAccessor ->
                 action(firstAccessor, secondAccessor, thirdAccessor)
             }
         }

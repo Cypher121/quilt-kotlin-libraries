@@ -45,8 +45,8 @@ public fun itemSettingsOf(
     equipmentSlot: ((ItemStack) -> EquipmentSlot)? = null,
     otherSettings: List<Pair<CustomItemSetting<*>, *>> = emptyList()
 ): QuiltItemSettings = buildItemSettings {
-    maxCount(maxCount)
     maxDamage(maxDamage)
+    maxCount(maxCount)
     if (recipeRemainder != null) recipeRemainder(recipeRemainder)
     if (group != null) group(group)
     rarity(rarity)
